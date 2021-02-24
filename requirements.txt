@@ -1,0 +1,6 @@
+advertorch==0.2.3
+torchvision==0.2.2
+numpy==1.19.5
+tqdm==4.57.0
+torch==1.0.1
+tensorboardX==2.1

@@ -18,7 +18,11 @@ from tqdm import tqdm
 from model import co_train_classifier
 from advertorch.attacks import GradientSignAttack
 
-
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+if device == torch.device('cuda'):
+    set_cuda = True
+else:
+    set_cuda = False
 parser = argparse.ArgumentParser(description='Deep Co-Training for Semi-Supervised Image Recognition')
 parser.add_argument('--sess', default='default', type=str, help='session id')
 parser.add_argument('--batchsize', '-b', default=100, type=int)
@@ -45,7 +49,7 @@ args = parser.parse_args()
 seed = args.seed
 random.seed(seed)
 torch.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
+if set_cuda: torch.cuda.manual_seed_all(seed)
 np.random.seed(seed)
 torch.backends.cudnn.deterministic=True
 torch.backends.cudnn.benchmark = False
@@ -193,7 +197,7 @@ if args.resume:
     net2 = checkpoint['net2']
     start_epoch = checkpoint['epoch'] + 1
     torch.set_rng_state(checkpoint['rng_state'])
-    torch.cuda.set_rng_state(checkpoint['cuda_rng_state'])
+    if set_cuda: torch.cuda.set_rng_state(checkpoint['cuda_rng_state'])
     np.random.set_state(checkpoint['np_state'])
     random.setstate(checkpoint['random_state'])
     
@@ -278,11 +282,11 @@ else:
 
     
   
-net1.cuda()
-net2.cuda()
+if set_cuda: net1.cuda()
+if set_cuda: net2.cuda()
 net1 = torch.nn.DataParallel(net1)
 net2 = torch.nn.DataParallel(net2)
-print('Using', torch.cuda.device_count(), 'GPUs.')
+if set_cuda: print('Using', torch.cuda.device_count(), 'GPUs.')
 
 
 params = list(net1.parameters()) + list(net2.parameters())
@@ -339,9 +343,9 @@ def train(epoch):
         inputs_S2, labels_S2 = S_iter2.next()
         inputs_U, labels_U = U_iter.next() # note that labels_U will not be used for training. 
 
-        inputs_S1, labels_S1 = inputs_S1.cuda(), labels_S1.cuda()
-        inputs_S2, labels_S2 = inputs_S2.cuda(), labels_S2.cuda()
-        inputs_U = inputs_U.cuda()    
+        if set_cuda: inputs_S1, labels_S1 = inputs_S1.cuda(), labels_S1.cuda()
+        if set_cuda: inputs_S2, labels_S2 = inputs_S2.cuda(), labels_S2.cuda()
+        if set_cuda: inputs_U = inputs_U.cuda()    
 
 
         logit_S1 = net1(inputs_S1)
@@ -425,8 +429,8 @@ def test(epoch):
     total2 = 0
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(testloader):
-            inputs = inputs.cuda()
-            targets = targets.cuda()
+            if set_cuda: inputs = inputs.cuda()
+            if set_cuda: targets = targets.cuda()
 
             outputs1 = net1(inputs)
             predicted1 = outputs1.max(1)
