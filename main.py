@@ -26,8 +26,9 @@ else:
 parser = argparse.ArgumentParser(description='Deep Co-Training for Semi-Supervised Image Recognition')
 parser.add_argument('--sess', default='default', type=str, help='session id')
 parser.add_argument('--batchsize', '-b', default=100, type=int)
-parser.add_argument('--lambda_cot_max', default=10, type=int)
-parser.add_argument('--lambda_diff_max', default=0.5, type=float)
+parser.add_argument('--lambda_cot_max', default=10, type=int) # Js divergence. Both networks should have the 
+                                                              #  same predictions on the unlabelled data.
+parser.add_argument('--lambda_diff_max', default=0.5, type=float) # Uses adversarial examples
 parser.add_argument('--seed', default=1234, type=int)
 parser.add_argument('--epochs', default=600, type=int)
 parser.add_argument('--warm_up', default=80.0, type=float)
@@ -77,6 +78,9 @@ else:
 
 lambda_cot_max = args.lambda_cot_max
 lambda_diff_max = args.lambda_diff_max
+
+# IMPORTANT: 2nd and 3rd lambda terms are set to zero initially.
+
 lambda_cot = 0.0
 lambda_diff = 0.0
 best_acc = 0.0  
@@ -106,25 +110,38 @@ def loss_sup(logit_S1, logit_S2, labels_S1, labels_S2):
     loss2 = ce(logit_S2, labels_S2) 
     return (loss1+loss2)
 
+    # not divided by the batch size above
+
 def loss_cot(U_p1, U_p2):
+
+# What are the parameters here? Are they unnormalized log probabilities of the unlabelled data?
+
 # the Jensen-Shannon divergence between p1(x) and p2(x)
+
+# an explanation is here --> https://medium.com/datalab-log/measuring-the-statistical-similarity-between-two-samples-using-jensen-shannon-and-kullback-leibler-8d05af514b15#:~:text=It%20is%20important%20to%20notice,P(x)%20%3D%200.&text=From%20the%20above%20equations%2C%20we,a%20true%20metric%20for%20distance.
+
     S = nn.Softmax(dim = 1)
-    LS = nn.LogSoftmax(dim = 1)
+    LS = nn.LogSoftmax(dim = 1) # computes softmax over dimension 1
     a1 = 0.5 * (S(U_p1) + S(U_p2))
-    loss1 = a1 * torch.log(a1)
+    loss1 = a1 * torch.log(a1) # entropy of the mixture 
     loss1 = -torch.sum(loss1)
-    loss2 = S(U_p1) * LS(U_p1)
+    loss2 = 0.5 * S(U_p1) * LS(U_p1) # mixture of the entropy part 1
     loss2 = -torch.sum(loss2)
-    loss3 = S(U_p2) * LS(U_p2)
+    loss3 = 0.5 * S(U_p2) * LS(U_p2) # mixture of the entropy part 2
     loss3 = -torch.sum(loss3)
 
-    return (loss1 - 0.5 * (loss2 + loss3))/U_batch_size
+    return (loss1 - (loss2 + loss3))/U_batch_size # entropy of the mixture minus the mixture of the entropy
 
 
 def loss_diff(logit_S1, logit_S2, perturbed_logit_S1, perturbed_logit_S2, logit_U1, logit_U2, perturbed_logit_U1, perturbed_logit_U2):
+    
+    # this combines our labelled and unlabelled data, and uses adversarial examples to enforce consistency
+    
     S = nn.Softmax(dim = 1)
     LS = nn.LogSoftmax(dim = 1)
     
+    # so basically cross entropy is (sum over i) p(x) * log(q(x)). And then taking its negative. And summing it.
+
     a = S(logit_S2) * LS(perturbed_logit_S1)
     a = torch.sum(a)
 
